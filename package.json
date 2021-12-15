@@ -1,0 +1,22 @@
+{
+  "name": "social-reactions-demo",
+  "version": "0.0.1",
+  "repository": "https://github.com/southworks/amazon-ivs-social-reactions-demo.git",
+  "author": "SOUTHWORKS",
+  "description": "General repository for the Social Reactions Demo for Twitch.",
+  "private": true,
+  "scripts": {
+    "check:eslint": "eslint",
+    "format:eslint": "eslint --fix",
+    "check:prettier": "prettier \"**/*.js\" --check",
+    "format:prettier": "prettier \"**/*.js\" --write",
+    "check": "npm run check:eslint & npm run check:prettier",
+    "format": "npm run format:eslint && npm run format:prettier"
+  },
+  "dependencies": {},
+  "devDependencies": {
+    "eslint": "^7.30.0",
+    "eslint-config-prettier": "^8.3.0",
+    "prettier": "^2.3.2"
+  }
+}

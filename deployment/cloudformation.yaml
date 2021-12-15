@@ -1,0 +1,788 @@
+AWSTemplateFormatVersion: "2010-09-09"
+Transform: "AWS::Serverless-2016-10-31"
+Description: AWS CloudFormation template for Amazon Social Reactions demo - suffix <RANDOM_SUFFIX>
+
+Parameters:
+  SocialReactionsApiName:
+    Type: String
+    Description: Name of the REST API Gateway for Social Reactions
+    Default: social-reactions-demo-api-<RANDOM_SUFFIX>
+
+  LambdaAddReactionFunctionName:
+    Type: String
+    Description: Name of the lambda-add-reaction function
+    Default: social-reactions-demo-add-reaction-<RANDOM_SUFFIX>
+
+  PlayerAppBucketName:
+    Type: String
+    Description: Name of the Player App bucket
+    Default: social-reactions-demo-player-app-<RANDOM_SUFFIX>
+
+  ApiDefinitionsBucketName:
+    Type: String
+    Description: Name of the bucket that contains the API definition YAML files
+    Default: social-reactions-demo-api-definitions-<RANDOM_SUFFIX>
+
+  LambdaFunctionsBucketName:
+    Type: String
+    Description: Name of the bucket that contains the Lambda functions zip files
+    Default: social-reactions-demo-lambda-functions-<RANDOM_SUFFIX>
+
+  DynamoDBConnectionsTableName:
+    Type: String
+    Description: Name of the connections table
+    Default: social-reactions-demo-connections-<RANDOM_SUFFIX>
+
+  DynamoDBReactionsTableName:
+    Type: String
+    Description: Name of the reactions table
+    Default: social-reactions-demo-reactions-<RANDOM_SUFFIX>
+
+  # Reader WebSocket implementation parameters
+  ReaderWebSocketName:
+    Type: String
+    Description: Name of the reader WebSocket used to keep track of the client (player) connections
+    Default: social-reactions-demo-reader-websocket-<RANDOM_SUFFIX>
+
+  LambdaOnConnectFunctionName:
+    Type: String
+    Description: Name of the lambda-on-connect function
+    Default: social-reactions-demo-on-connect-<RANDOM_SUFFIX>
+
+  LambdaOnDisconnectFunctionName:
+    Type: String
+    Description: Name of the lambda-on-disconnect function
+    Default: social-reactions-demo-on-disconnect-<RANDOM_SUFFIX>
+
+  LambdaSendMessageFunctionName:
+    Type: String
+    Description: Name of the lambda-send-message function
+    Default: social-reactions-demo-send-message-<RANDOM_SUFFIX>
+
+  LambdaGetReactionsFunctionName:
+    Type: String
+    Description: Name of the lambda-get-reactions function
+    Default: social-reactions-demo-get-reactions-<RANDOM_SUFFIX>
+
+  # SNS/SQS parameters
+  SNSTopicName:
+    Description: The name of the topic that pushes the reactions to the queues
+    Type: String
+    Default: social-reactions-demo-sns-topic-<RANDOM_SUFFIX>
+
+  SQSQueueReactionsForWebSocketName:
+    Description: The name of the queue that receives the reactions from the SNS topic. Data in this queue is taken by the Send Message Lambda function
+    Type: String
+    Default: social-reactions-demo-sqs-queue-reactions-for-websocket-<RANDOM_SUFFIX>
+
+  SQSQueueReactionsForTimedMetadataName:
+    Description: The name of the queue that receives the reactions from the SNS topic. Data in this queue is taken by the Reactions server
+    Type: String
+    Default: social-reactions-demo-sqs-queue-reactions-for-timed-metadata-<RANDOM_SUFFIX>
+
+  SQSDeadLetterQueueReactionsForTimedMetadataName:
+    Description: The name of the queue that receives the failed messages from the Timed Metadata queue.
+    Type: String
+    Default: social-reactions-demo-sqs-dead-letter-queue-reactions-for-timed-metadata-<RANDOM_SUFFIX>
+
+  # ECS resources parameters
+  ECSClusterName:
+    Type: String
+    Description: Name of the ECS Cluster
+    Default: social-reactions-demo-cluster-<RANDOM_SUFFIX>
+
+  ReactionsServiceName:
+    Type: String
+    Description: Name of the Reactions service
+    Default: social-reactions-demo-reactions-service-<RANDOM_SUFFIX>
+
+  ReactionsTaskDefinitionName:
+    Type: String
+    Description: Name of the Reactions service task definition
+    Default: social-reactions-demo-reactions-task-definition-<RANDOM_SUFFIX>
+
+  ReactionsContainerDefinitionName:
+    Type: String
+    Description: Name of the Reactions service container definition
+    Default: social-reactions-demo-reactions-container-definition-<RANDOM_SUFFIX>
+
+  ReactionsServiceLogGroupName:
+    Type: String
+    Description: Name of the Reactions service CloudWatch log group
+    Default: /ecs/social-reactions-demo-reactions-logs-<RANDOM_SUFFIX>
+
+  PrivateDNSNamespaceName:
+    Type: String
+    Description: Name of the private DNS Namespace
+    Default: rtmp
+
+  ReactionsServiceDiscoveryName:
+    Type: String
+    Description: Name of the Reactions Service Discovery
+    Default: reactions-service-discovery
+
+  ECRReactionsRepositoryName:
+    Type: String
+    Description: Name of the private DNS Namespace
+    Default: social-reactions-demo-reactions-images-<RANDOM_SUFFIX>
+
+Mappings:
+  SubnetConfig:
+    VPC:
+      CIDR: '24.0.0.0/16'
+    Subnet:
+      CIDR: '24.0.0.0/24'
+
+Resources:
+  ################################## API Gateway resources
+  SocialReactionsApi:
+    Type: AWS::ApiGatewayV2::Api
+    Properties:
+      Body:
+        Fn::Transform:
+          Name: AWS::Include
+          Parameters:
+            Location: !Sub 's3://${ApiDefinitionsBucketName}/api.definition.yaml'
+
+  SocialReactionsApiDeployment:
+    DependsOn: [SocialReactionsApiStage]
+    Type: AWS::ApiGatewayV2::Deployment
+    Properties:
+      ApiId: !Ref SocialReactionsApi
+      StageName: demo
+
+  SocialReactionsApiStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      StageName: demo
+      ApiId: !Ref SocialReactionsApi
+
+  LambdaLayer:
+    Type: AWS::Lambda::LayerVersion
+    Properties:
+      LayerName: general-lambda-layer
+      CompatibleRuntimes:
+        - nodejs14.x
+      Content:
+        S3Bucket: !Ref LambdaFunctionsBucketName
+        S3Key: layer.zip
+
+  LambdaAddReaction:
+    Type: AWS::Lambda::Function
+    Properties:
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaFunctionsBucketName
+        S3Key: lambda-add-reaction.zip
+      FunctionName: !Ref LambdaAddReactionFunctionName
+      Handler: app.handler
+      Runtime: nodejs14.x
+      Layers:
+        - !Ref LambdaLayer
+      Environment:
+        Variables:
+          TOPIC_ARN: !Ref SNSTopic
+          TABLE_NAME: !Ref DynamoDBReactionsTableName
+
+  # Api gateway role
+  ApiGatewayRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Sid: ""
+            Effect: "Allow"
+            Principal:
+              Service:
+                - "apigateway.amazonaws.com"
+            Action:
+              - "sts:AssumeRole"
+      Path: "/"
+      Policies:
+        - PolicyName: LambdaAccess
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: "Allow"
+                Action: "lambda:InvokeFunction"
+                Resource: "*"
+
+  ################################## S3 resources
+  PlayerAppBucket:
+    Type: AWS::S3::Bucket
+    Properties:
+      BucketName: !Ref PlayerAppBucketName
+      PublicAccessBlockConfiguration:
+        BlockPublicAcls: true
+        BlockPublicPolicy: true
+        IgnorePublicAcls: true
+        RestrictPublicBuckets: true
+
+  PlayerAppBucketPolicy:
+    Type: "AWS::S3::BucketPolicy"
+    Properties:
+      Bucket: !Ref PlayerAppBucket
+      PolicyDocument:
+        Version: "2012-10-17"
+        Id: "PolicyForCloudFrontPrivateContent"
+        Statement:
+          - Effect: Allow
+            Principal:
+              AWS: !Sub "arn:aws:iam::cloudfront:user/CloudFront Origin Access Identity ${CloudFrontPlayerAppOriginAccessIdentity}"
+            Action: s3:GetObject
+            Resource: !Sub "arn:aws:s3:::${PlayerAppBucket}/*"
+
+  CloudFrontPlayerAppOriginAccessIdentity:
+    Type: AWS::CloudFront::CloudFrontOriginAccessIdentity
+    Properties:
+      CloudFrontOriginAccessIdentityConfig:
+        Comment: !Sub "access-identity-${PlayerAppBucketName}.s3.amazonaws.com"
+
+  CloudFrontPlayerAppDistribution:
+    Type: AWS::CloudFront::Distribution
+    DependsOn: ["PlayerAppBucket"]
+    Properties:
+      DistributionConfig:
+        DefaultRootObject: "index.html"
+        Enabled: true
+        Origins:
+          - DomainName: !GetAtt PlayerAppBucket.RegionalDomainName
+            ConnectionAttempts: 3
+            ConnectionTimeout: 10
+            Id: !Sub "S3-${PlayerAppBucketName}"
+            S3OriginConfig:
+              OriginAccessIdentity: !Sub "origin-access-identity/cloudfront/${CloudFrontPlayerAppOriginAccessIdentity}"
+        PriceClass: PriceClass_100
+        ViewerCertificate:
+          CloudFrontDefaultCertificate: "true"
+        DefaultCacheBehavior:
+          ViewerProtocolPolicy: redirect-to-https
+          AllowedMethods:
+            - GET
+            - HEAD
+          TargetOriginId: !Sub "S3-${PlayerAppBucketName}"
+          ForwardedValues:
+            QueryString: false
+
+  ################################## WebSocket resources
+  ReaderWebSocket:
+    Type: "AWS::ApiGatewayV2::Api"
+    Properties:
+      Name: !Ref ReaderWebSocketName
+      ProtocolType: WEBSOCKET
+      RouteSelectionExpression: $request.body.action
+
+  ## Reader WebSocket routes
+  ### $connect
+  ReaderWebSocketRouteConnect:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ReaderWebSocket
+      RouteKey: $connect
+      AuthorizationType: NONE
+      Target: !Join
+        - /
+        - - integrations
+          - !Ref ReaderWebSocketRouteConnectIntegration
+
+  ReaderWebSocketRouteConnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ReaderWebSocket
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaOnConnect.Arn}/invocations
+      CredentialsArn: !GetAtt ApiGatewayRole.Arn
+
+  ### $disconnect
+  ReaderWebSocketRouteDisconnect:
+    Type: AWS::ApiGatewayV2::Route
+    Properties:
+      ApiId: !Ref ReaderWebSocket
+      RouteKey: $disconnect
+      AuthorizationType: NONE
+      Target: !Join
+        - /
+        - - integrations
+          - !Ref ReaderWebSocketRouteDisconnectIntegration
+
+  ReaderWebSocketRouteDisconnectIntegration:
+    Type: AWS::ApiGatewayV2::Integration
+    Properties:
+      ApiId: !Ref ReaderWebSocket
+      IntegrationType: AWS_PROXY
+      IntegrationUri: !Sub arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaOnDisconnect.Arn}/invocations
+      CredentialsArn: !GetAtt ApiGatewayRole.Arn
+
+  ReaderWebSocketStage:
+    Type: AWS::ApiGatewayV2::Stage
+    Properties:
+      StageName: demo
+      ApiId: !Ref ReaderWebSocket
+
+  ReaderWebSocketDeployment:
+    DependsOn: [ReaderWebSocketRouteConnect, ReaderWebSocketRouteDisconnect]
+    Type: AWS::ApiGatewayV2::Deployment
+    Properties:
+      ApiId: !Ref ReaderWebSocket
+      StageName: demo
+
+  ### WebSocket connections table
+  ################ WEBSOCKET CONNECTIONS TABLE (DynamoDB)
+  DynamoDbConnectionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      AttributeDefinitions:
+        - AttributeName: "connectionId"
+          AttributeType: "S"
+      KeySchema:
+        - AttributeName: "connectionId"
+          KeyType: "HASH"
+      ProvisionedThroughput:
+        ReadCapacityUnits: 5
+        WriteCapacityUnits: 5
+      SSESpecification:
+        SSEEnabled: True
+      TableName: !Ref DynamoDBConnectionsTableName
+
+  ### Lambdas
+  ################ REACTIONS TABLE (DynamoDB)
+  DynamoDbReactionsTable:
+    Type: AWS::DynamoDB::Table
+    Properties:
+      BillingMode: PAY_PER_REQUEST
+      AttributeDefinitions:
+        - AttributeName: id
+          AttributeType: S
+        - AttributeName: channelArn
+          AttributeType: S
+      KeySchema:
+        - AttributeName: id
+          KeyType: HASH
+      SSESpecification:
+        SSEEnabled: True
+      TableName: !Ref DynamoDBReactionsTableName
+      GlobalSecondaryIndexes:
+        - IndexName: channelArnIndex
+          KeySchema:
+            - AttributeName: channelArn
+              KeyType: HASH
+          Projection:
+            ProjectionType: ALL
+
+  LambdaExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Effect: Allow
+            Principal:
+              Service:
+                - lambda.amazonaws.com
+            Action:
+              - sts:AssumeRole
+      Policies:
+        - PolicyName: root
+          PolicyDocument:
+            Version: "2012-10-17"
+            Statement:
+              - Effect: Allow
+                Action:
+                  # Rules for DynamoDB
+                  - "dynamodb:Scan"
+                  - "dynamodb:Query"
+                  - "dynamodb:PutItem"
+                  - "dynamodb:DeleteItem"
+
+                  # Rules for CloudWatch
+                  - "logs:CreateLogGroup"
+                  - "logs:CreateLogStream"
+                  - "logs:PutLogEvents"
+
+                  # Rules for API Gateway
+                  - "execute-api:ManageConnections"
+
+                  # Rules for SNS
+                  - "sns:Publish"
+
+                  # Rules for SQS
+                  - "sqs:DeleteMessage"
+                  - "sqs:GetQueueAttributes"
+                  - "sqs:ReceiveMessage"
+                Resource: "*"
+
+  LambdaOnConnect:
+    Type: AWS::Lambda::Function
+    Properties:
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaFunctionsBucketName
+        S3Key: lambda-on-connect.zip
+      FunctionName: !Ref LambdaOnConnectFunctionName
+      Handler: app.handler
+      Runtime: nodejs14.x
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref DynamoDBConnectionsTableName
+
+  LambdaOnDisconnect:
+    Type: AWS::Lambda::Function
+    Properties:
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaFunctionsBucketName
+        S3Key: lambda-on-disconnect.zip
+      FunctionName: !Ref LambdaOnDisconnectFunctionName
+      Handler: app.handler
+      Runtime: nodejs14.x
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref DynamoDBConnectionsTableName
+
+  LambdaSendMessage:
+    Type: AWS::Lambda::Function
+    Properties:
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaFunctionsBucketName
+        S3Key: lambda-send-message.zip
+      FunctionName: !Ref LambdaSendMessageFunctionName
+      Handler: app.handler
+      Runtime: nodejs14.x
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref DynamoDBConnectionsTableName
+          GATEWAY_DOMAIN: !Sub "${ReaderWebSocket}.execute-api.${AWS::Region}.amazonaws.com/demo"
+
+  LambdaGetReactions:
+    Type: AWS::Lambda::Function
+    Properties:
+      Role: !GetAtt LambdaExecutionRole.Arn
+      Code:
+        S3Bucket: !Ref LambdaFunctionsBucketName
+        S3Key: lambda-get-reactions.zip
+      FunctionName: !Ref LambdaGetReactionsFunctionName
+      Handler: app.handler
+      Runtime: nodejs14.x
+      Environment:
+        Variables:
+          TABLE_NAME: !Ref DynamoDBReactionsTableName
+
+  TopicToQueueEventSourceMapping:
+    Type: AWS::Lambda::EventSourceMapping
+    Properties:
+      EventSourceArn: !GetAtt SQSQueueReactionsForWebSocket.Arn
+      FunctionName: !GetAtt LambdaSendMessage.Arn
+
+  ################################## SNS resources
+  SNSTopic:
+    Type: AWS::SNS::Topic
+    Properties:
+      TopicName: !Ref SNSTopicName
+      Subscription:
+        - Endpoint: !GetAtt SQSQueueReactionsForWebSocket.Arn
+          Protocol: "sqs"
+        - Endpoint: !GetAtt SQSQueueReactionsForTimedMetadata.Arn
+          Protocol: "sqs"
+
+  SNSTopicPolicy:
+    Type: AWS::SNS::TopicPolicy
+    Properties:
+      Topics:
+        - !Ref SNSTopic
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Principal:
+              Service: "lambda.amazonaws.com"
+            Effect: Allow
+            Action:
+              - "sns:Publish"
+            Resource: "*"
+            Condition: {
+              ArnEquals: {
+                aws:SourceArn: !GetAtt LambdaAddReaction.Arn
+              }
+            }
+
+  SQSQueueReactionsForWebSocket:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Ref SQSQueueReactionsForWebSocketName
+
+  SQSQueueReactionsForTimedMetadata:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Ref SQSQueueReactionsForTimedMetadataName
+      RedrivePolicy:
+        deadLetterTargetArn: !GetAtt SQSDeadLetterQueueReactionsForTimedMetadata.Arn
+        maxReceiveCount: 1
+
+  SQSDeadLetterQueueReactionsForTimedMetadata:
+    Type: AWS::SQS::Queue
+    Properties:
+      QueueName: !Ref SQSDeadLetterQueueReactionsForTimedMetadataName
+
+  SQSQueuePolicyTopicToQueues:
+    Type: AWS::SQS::QueuePolicy
+    Properties:
+      Queues:
+        - !Ref SQSQueueReactionsForWebSocket
+        - !Ref SQSQueueReactionsForTimedMetadata
+      PolicyDocument:
+        Version: "2012-10-17"
+        Statement:
+          - Principal:
+              Service: "sns.amazonaws.com"
+            Effect: Allow
+            Action:
+              - "sqs:*"
+            Resource: "*"
+            Condition: {
+              ArnEquals: {
+                aws:SourceArn: !Ref SNSTopic
+              }
+            }
+
+  ################################## ECS Resources
+  # VPC
+  VPC:
+    Type: 'AWS::EC2::VPC'
+    Properties:
+      CidrBlock: !FindInMap ['SubnetConfig', 'VPC', 'CIDR']
+      EnableDnsHostnames: true
+      EnableDnsSupport: true
+
+  Subnet:
+    Type: 'AWS::EC2::Subnet'
+    Properties:
+      VpcId: !Ref VPC
+      CidrBlock: !FindInMap ['SubnetConfig', 'Subnet', 'CIDR']
+      MapPublicIpOnLaunch: true
+
+  InternetGateway:
+    Type: AWS::EC2::InternetGateway
+    DependsOn: VPC
+
+  VPCGatewayAttachment:
+    Type: AWS::EC2::VPCGatewayAttachment
+    Properties:
+      VpcId: !Ref VPC
+      InternetGatewayId: !Ref InternetGateway
+
+  RouteTable:
+    Type: AWS::EC2::RouteTable
+    Properties:
+      VpcId: !Ref VPC
+
+  Route:
+    Type: AWS::EC2::Route
+    DependsOn: VPCGatewayAttachment
+    Properties:
+      RouteTableId: !Ref RouteTable
+      DestinationCidrBlock: 0.0.0.0/0
+      GatewayId: !Ref InternetGateway
+
+  SubnetRouteTableAssociation:
+    Type: AWS::EC2::SubnetRouteTableAssociation
+    Properties:
+      SubnetId: !Ref Subnet
+      RouteTableId: !Ref RouteTable
+
+  PrivateDnsNamespace:
+    Type: AWS::ServiceDiscovery::PrivateDnsNamespace
+    Properties:
+        Name: !Ref PrivateDNSNamespaceName
+        Vpc: !Ref VPC
+
+  ## Security groups
+  ReactionsServiceSecurityGroup:
+    Type: AWS::EC2::SecurityGroup
+    Properties:
+      GroupDescription: Security Group for ECS Reactions service
+      VpcId: !Ref VPC
+
+  ReactionsServiceSecurityGroupInboundRule:
+    Type: AWS::EC2::SecurityGroupIngress
+    Properties:
+      GroupId: !GetAtt ReactionsServiceSecurityGroup.GroupId
+      IpProtocol: tcp
+      FromPort: 1935
+      ToPort: 1935
+      CidrIp: 0.0.0.0/0
+
+  ReactionsServiceSecurityGroupOutboundRule:
+    Type: AWS::EC2::SecurityGroupEgress
+    Properties:
+      GroupId: !GetAtt ReactionsServiceSecurityGroup.GroupId
+      IpProtocol: -1
+      CidrIp: 0.0.0.0/0
+
+  ## Log groups
+  ReactionsServiceLogGroup:
+    Type: AWS::Logs::LogGroup
+    Properties:
+      LogGroupName: !Ref ReactionsServiceLogGroupName
+
+  ## Cluster
+  ECSCluster:
+    Type: AWS::ECS::Cluster
+    Properties:
+      ClusterName: !Ref ECSClusterName
+
+  ## Roles
+  ECSRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ecs-tasks.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+      - PolicyName: ecs-service
+        PolicyDocument:
+          Statement:
+          - Effect: Allow
+            Action:
+              # Rules which allow ECS to attach network interfaces to instances
+              # on your behalf in order for awsvpc networking mode to work right
+              - 'ec2:AttachNetworkInterface'
+              - 'ec2:CreateNetworkInterface'
+              - 'ec2:CreateNetworkInterfacePermission'
+              - 'ec2:DeleteNetworkInterface'
+              - 'ec2:DeleteNetworkInterfacePermission'
+              - 'ec2:Describe*'
+              - 'ec2:DetachNetworkInterface'
+
+              # Rules for IVS
+              - 'ivs:PutMetadata'
+
+              # Rules for SQS
+              - "sqs:DeleteMessage"
+              - "sqs:GetQueueAttributes"
+              - "sqs:ReceiveMessage"
+
+            Resource: '*'
+
+  ECSTaskExecutionRole:
+    Type: AWS::IAM::Role
+    Properties:
+      AssumeRolePolicyDocument:
+        Statement:
+        - Effect: Allow
+          Principal:
+            Service: [ecs-tasks.amazonaws.com]
+          Action: ['sts:AssumeRole']
+      Path: /
+      Policies:
+        - PolicyName: AmazonECSTaskExecutionRolePolicy
+          PolicyDocument:
+            Statement:
+            - Effect: Allow
+              Action:
+                # Allow the ECS Tasks to download images from ECR
+                - 'ecr:GetAuthorizationToken'
+                - 'ecr:BatchCheckLayerAvailability'
+                - 'ecr:GetDownloadUrlForLayer'
+                - 'ecr:BatchGetImage'
+
+                # Allow the ECS tasks to upload logs to CloudWatch
+                - 'logs:CreateLogStream'
+                - 'logs:PutLogEvents'
+              Resource: '*'
+
+  # Timed Metadata service
+  ReactionsTaskDefinition:
+    Type: AWS::ECS::TaskDefinition
+    Properties:
+      Family: !Ref ReactionsTaskDefinitionName
+      ExecutionRoleArn: !Ref ECSTaskExecutionRole
+      ContainerDefinitions:
+        - Name: !Ref ReactionsContainerDefinitionName
+          ReadonlyRootFilesystem: false # disabled
+          Image: !Sub '${AWS::AccountId}.dkr.ecr.${AWS::Region}.amazonaws.com/${ECRReactionsRepositoryName}:latest'
+          LogConfiguration:
+            LogDriver: awslogs
+            Options:
+              awslogs-region: !Sub '${AWS::Region}'
+              awslogs-group: !Ref ReactionsServiceLogGroupName
+              awslogs-stream-prefix: ecs
+          Cpu: 0
+          Environment:
+            - Name: AWS_REGION
+              Value: !Sub '${AWS::Region}'
+            - Name: SQS_QUEUE_URL
+              Value: !Ref SQSQueueReactionsForTimedMetadata
+            - Name: SQS_DEAD_LETTER_QUEUE_URL
+              Value: !Ref SQSDeadLetterQueueReactionsForTimedMetadata
+      Memory: 1024
+      TaskRoleArn: !GetAtt ECSRole.Arn
+      RequiresCompatibilities:
+        - FARGATE
+      NetworkMode: awsvpc
+      Cpu: 512
+
+  ReactionsServiceDiscovery:
+    Type: AWS::ServiceDiscovery::Service
+    Properties:
+      Name: !Ref ReactionsServiceDiscoveryName
+      DnsConfig:
+        DnsRecords:
+          - TTL: 60
+            Type: A
+      NamespaceId: !Ref PrivateDnsNamespace
+
+  ReactionsService:
+    Type: AWS::ECS::Service
+    Properties:
+      LaunchType: FARGATE
+      Cluster: !Ref ECSCluster
+      ServiceName: !Ref ReactionsServiceName
+      TaskDefinition: !Ref ReactionsTaskDefinition
+      DesiredCount: 1
+      NetworkConfiguration:
+        AwsvpcConfiguration:
+          AssignPublicIp: ENABLED
+          Subnets:
+            - !Ref Subnet
+          SecurityGroups:
+            - !Ref ReactionsServiceSecurityGroup
+
+Outputs:
+  AWSRegion:
+    Value: !Ref AWS::Region
+
+  CloudFrontPlayerAppDistribution:
+    Description: "CloudFront distribution ID for Player"
+    Value: !Ref CloudFrontPlayerAppDistribution
+
+  SocialReactionsApi:
+    Description: Social Reactions REST API Gateway endpoint URL
+    Value: !Sub "https://${SocialReactionsApi}.execute-api.${AWS::Region}.amazonaws.com/${SocialReactionsApiStage}"
+
+  SocialReactionsApiReactions:
+    Description: Social Reactions REST API Gateway endpoint URL - /reactions
+    Value: !Sub "https://${SocialReactionsApi}.execute-api.${AWS::Region}.amazonaws.com/${SocialReactionsApiStage}/reactions"
+
+  SocialReactionsApiId:
+    Description: Social Reactions REST API Gateway ID
+    Value: !Ref SocialReactionsApi
+
+  ReaderWebSocketApiId:
+    Value: !Ref ReaderWebSocket
+
+  ReaderWebSocketURL:
+    Value: !Sub "wss://${ReaderWebSocket}.execute-api.${AWS::Region}.amazonaws.com/demo"
+
+  PlayerAppURL:
+    Value: !GetAtt CloudFrontPlayerAppDistribution.DomainName
+
+  SQSQueueForTimedMetadataURL:
+    Value: !Ref SQSQueueReactionsForTimedMetadata
+
+  SQSDeadLetterQueueForTimedMetadataURL:
+    Value: !Ref SQSDeadLetterQueueReactionsForTimedMetadata

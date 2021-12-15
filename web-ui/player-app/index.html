@@ -1,0 +1,35 @@
+<!DOCTYPE html>
+<html>
+    <head>
+    <script src="https://player.live-video.net/1.5.1/amazon-ivs-player.min.js"></script>
+    <script src="https://requirejs.org/docs/release/2.3.5/minified/require.js"></script>
+    <link rel="stylesheet" href="index.css">
+    <meta name="viewport" content="width=device-width, initial-scale=1">
+    <title>Social Reactions</title>
+    </head>
+
+    <body>
+    <div id="app">
+        <div class="inner">
+        <div class="help-text">
+            <span> 💡Tap on the player to send emojis </span>
+        </div>
+        <div class="video-wrapper">
+            <div class="overlay">
+            </div>
+            <video id="video-player" playsinline></video>
+        </div>
+        <div class="emoji-picker">
+            <ul class="emojis">
+            <li><button class="emoji-btn" data-id="star"> 🌟 </button></li>
+            <li><button class="emoji-btn" data-id="100"> 💯 </button></li>
+            <li><button class="emoji-btn active" data-id="clap"> 👏 </button></li>
+            <li><button class="emoji-btn" data-id="tada"> 🎉 </button></li>
+            <li><button class="emoji-btn" data-id="laugh"> 😂 </button></li>
+            </ul>
+        </div>
+        </div>
+    </div>
+    <script type="module" src="index.js"></script>
+    </body>
+</html>

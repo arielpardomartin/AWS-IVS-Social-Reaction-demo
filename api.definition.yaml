@@ -1,0 +1,140 @@
+openapi: 3.0.1
+info:
+  title:
+    Ref: SocialReactionsApiName 
+  description: REST API for Social Reactions
+  version: 1.0.0
+servers:
+- url: /
+tags:
+- name: Reactions
+  description: Manage reactions
+paths:
+  /reactions:
+    get:
+      x-amazon-apigateway-integration:
+        credentials:
+          Fn::GetAtt:
+          - ApiGatewayRole
+          - Arn
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri:
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaGetReactions.Arn}/invocations
+        connectionType: "INTERNET"
+      tags:
+      - Reactions
+      summary: Get reactions by channel ARN
+      operationId: getReactions
+      parameters:
+      - name: limit
+        in: query
+        description: Maximum rows to retrieve in the request
+        required: true
+        schema:
+          type: number
+      - name: channel
+        in: query
+        description: ARN of the channel of the desired reactions
+        required: true
+        schema:
+          type: string
+      responses:
+        200:
+          description: Successful response
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/getReactionsResponse'
+        500:
+          description: There was a problem performing the operation.
+          content:
+            application/json:
+              schema:
+                $ref: '#/components/schemas/errorResponse'
+    post:
+      x-amazon-apigateway-integration:
+        credentials:
+          Fn::GetAtt:
+          - ApiGatewayRole
+          - Arn
+        payloadFormatVersion: "2.0"
+        type: "aws_proxy"
+        httpMethod: "POST"
+        uri:
+          Fn::Sub: arn:aws:apigateway:${AWS::Region}:lambda:path/2015-03-31/functions/${LambdaAddReaction.Arn}/invocations
+        connectionType: "INTERNET"
+      tags:
+      - Reactions
+      summary: Add a new reaction
+      operationId: addReaction
+      requestBody:
+        description: Needed data to add the reaction
+        content:
+          '*/*':
+            schema:
+              $ref: '#/components/schemas/addReactionRequest'
+        required: true
+      responses:
+        200:
+          description: Successful response
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/addReactionResponse'
+        500:
+          description: There was a problem performing the operation.
+          content:
+            '*/*':
+              schema:
+                $ref: '#/components/schemas/errorResponse'
+      x-codegen-request-body-name: body
+components:
+  schemas:
+    getReactionsResponse:
+      type: string
+      description: Stringified array for the obtained reactions
+    addReactionRequest:
+      type: object
+      properties:
+        id:
+          type: string
+          description: Unique ID for the new reaction
+        channelArn:
+          type: string
+          description: ARN of the channel the reaction should go to
+        reaction:
+          type: string
+          description: Reaction keyword
+          enum:
+          - star
+          - "100"
+          - clap
+          - tada
+          - laugh
+    addReactionResponse:
+      type: string
+      description: Success fixed message
+    errorResponse:
+      type: object
+      properties:
+        message:
+          type: string
+          description: Generic error description
+      description: Error object
+x-amazon-apigateway-cors:
+  allowOrigins:
+  - '*'
+  exposeHeaders:
+  - x-apigateway-header
+  - x-amz-date
+  - content-type
+  maxAge: 600
+  allowMethods:
+  - GET
+  - POST
+  allowHeaders:
+  - x-apigateway-header
+  - x-amz-date
+  - content-type

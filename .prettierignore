@@ -1,0 +1,9 @@
+node_modules/
+deployment/node_modules/
+serverless/lambda-add-reaction/node_modules/
+serverless/lambda-get-reactions/node_modules/
+serverless/lambda-on-connect/node_modules/
+serverless/lambda-on-disconnect/node_modules/
+serverless/lambda-send-message/node_modules/
+serverless/reactions-server/node_modules/
+web-ui/player-app/node_modules/

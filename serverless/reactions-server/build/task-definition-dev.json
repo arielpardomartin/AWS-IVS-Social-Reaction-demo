@@ -1,0 +1,37 @@
+{
+  "executionRoleArn": "arn:aws:iam::<AWS_ACCOUNT_ID>:role/ecsTaskExecutionRole",
+  "containerDefinitions": [
+    {
+      "logConfiguration": {
+        "logDriver": "awslogs",
+        "options": {
+          "awslogs-group": "/ecs/social-reactions-demo-reactions-logs-dev",
+          "awslogs-region": "<AWS_REGION>",
+          "awslogs-stream-prefix": "ecs"
+        }
+      },
+      "cpu": 0,
+      "secrets": [],
+      "environment": [
+        {
+          "name": "AWS_REGION",
+          "value": "<AWS_REGION>"
+        },
+        {
+          "name": "SQS_QUEUE_URL",
+          "value": "<SQS_QUEUE_URL>"
+        }
+      ],
+      "memoryReservation": 512,
+      "volumesFrom": [],
+      "image": "placeholder-to-be-replaced-by-cd-pipeline",
+      "name": "social-reactions-demo-reactions-container-definition-dev"
+    }
+  ],
+  "memory": "1024",
+  "taskRoleArn": "arn:aws:iam::<AWS_ACCOUNT_ID>:role/ECSReactionsTaskIAMRole",
+  "family": "social-reactions-demo-reactions-task-definition-dev",
+  "requiresCompatibilities": ["FARGATE"],
+  "networkMode": "awsvpc",
+  "cpu": "512"
+}

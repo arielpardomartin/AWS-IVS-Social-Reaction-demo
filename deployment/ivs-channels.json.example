@@ -1,0 +1,17 @@
+[
+  {
+    "name": "Your name of channel 1",
+    "arn": "arn:aws:ivs:us-west-2:123456789123:channel/eT9gO0hqlqAe",
+    "playbackUrl": "https://5ac6e80277b7.us-west-2.playback.live-video.net/api/video/v1/us-west-2.123456789123.channel.eT9gO0hqlqAe.m3u8"
+  },
+  {
+    "name": "Your name of channel 2",
+    "arn": "arn:aws:ivs:us-west-2:123456789123:channel/0Y6eXtKmgg7H",
+    "playbackUrl": "https://5ac6e80277b7.us-west-2.playback.live-video.net/api/video/v1/us-west-2.123456789123.channel.0Y6eXtKmgg7H.m3u8"
+  },
+  {
+    "name": "Your name of channel N",
+    "arn": "arn:aws:ivs:us-west-2:123456789123:channel/3BFAjZ8yg1Ip",
+    "playbackUrl": "https://5ac6e80277b7.us-west-2.playback.live-video.net/api/video/v1/us-west-2.123456789123.channel.3BFAjZ8yg1Ip.m3u8"
+  }
+]
