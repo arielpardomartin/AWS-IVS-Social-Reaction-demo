@@ -1,0 +1,1 @@
+# AWS-IVS-Social-Reaction-demo
